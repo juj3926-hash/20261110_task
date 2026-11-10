@@ -1,0 +1,29 @@
+﻿전체 검사 결과 (내부 모형) - 실행: 2026-11-10 16:36:33, 폴더: 학생코드
+
+> python -B -X utf8 check_student.py --stage A
+PASS A 접수
+PASS A 거부
+PASS A 미확인
+PASS A START는 선행 대기 생략
+PASS A 전송 전 정지 대기 시간 초과
+{"mode": "model-test", "stage": "A", "part": "all", "passed": 5, "total": 5}
+
+> python -B -X utf8 check_student.py --stage B --part normal
+PASS B 정상 순서
+{"mode": "model-test", "stage": "B", "part": "normal", "passed": 1, "total": 1}
+
+> python -B -X utf8 check_student.py --stage B --part stop
+PASS B 정지 after_start
+PASS B 정지 after_move1
+PASS B 정지 after_move2
+{"mode": "model-test", "stage": "B", "part": "stop", "passed": 3, "total": 3}
+
+> python -B -X utf8 check_student.py --stage C
+PASS C fresh
+PASS C timeout
+{"mode": "model-test", "stage": "C", "part": "all", "passed": 2, "total": 2}
+
+> python -B -X utf8 check_student.py --stage D
+PASS D 복구 전 보류/해제 후 허용
+{"mode": "model-test", "stage": "D", "part": "all", "passed": 1, "total": 1}
+

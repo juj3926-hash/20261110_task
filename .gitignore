@@ -1,0 +1,5 @@
+.omc/
+**/.omc/
+학생코드/logs/
+__pycache__/
+*.pyc
