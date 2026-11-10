@@ -1,0 +1,130 @@
+# PICKNPLACE_FULL — PC가 순서를 정하는 픽앤플레이스 (spec docs/superpowers/specs/2026-11-09-PICKNPLACE_FULL-design.md 4절)
+# 한 줄 = 렁 하나. 형식: 동작[, 동작…] := 조건 ; 렁 설명
+# 렁은 spec 4.2의 ①~⑦ 순서다. 순서도 동작의 일부이므로 바꾸지 않는다.
+
+# 기호 → 디바이스 (spec 4.1). 그리퍼 밸브가 오면 G_CLOSE/G_OPEN 두 줄만 P 주소로 바꾼다(COM3 그룹은 피함).
+MAP DI0 P00044 ; 로봇 DI0 이동1 요청
+MAP DI1 P00045 ; 로봇 DI1 이동2 요청
+MAP DI2 P00046 ; 로봇 DI2 재개 펄스
+MAP DI3 P00047 ; 로봇 DI3 즉시 정지
+MAP DO0 P00004 ; 로봇 DO0 동작 중
+MAP DO1 P00005 ; 로봇 DO1 비정상 정지
+MAP G_CLOSE M00460 ; 그리퍼 닫기 출력 (밸브 도착 전 임시)
+MAP G_OPEN M00461 ; 그리퍼 열기 출력 (밸브 도착 전 임시)
+MAP C0 M00400 ; D01001 = 0 (명령 없음)
+MAP C1111 M00401 ; D01001 = 1111 자동 운전 시작
+MAP C9991 M00402 ; D01001 = 9991 이동1
+MAP C9992 M00403 ; D01001 = 9992 이동2
+MAP C9995 M00404 ; D01001 = 9995 즉시 정지
+MAP C9993 M00405 ; D01001 = 9993 재개
+MAP C9994 M00406 ; D01001 = 9994 자동 운전 해제
+MAP C3333 M00407 ; D01001 = 3333 그리퍼 전환
+MAP C2222 M00408 ; D01001 = 2222 상태 확인
+MAP AUTO M00410 ; 자동 운전 (래치 블록 M00410~M0041F 시작)
+MAP ESTOP M00411 ; 즉시 정지 중 (DI3)
+MAP REQ1 M00412 ; 이동1 요청 중 (DI0)
+MAP REQ2 M00413 ; 이동2 요청 중 (DI1)
+MAP RUN1 M00414 ; 로봇이 스크립트1 실행을 시작함
+MAP RUN2 M00415 ; 로봇이 스크립트2 실행을 시작함
+MAP G_CLOSED M00416 ; 그리퍼 상태 (1 = 닫힘)
+MAP G_CLOSING M00417 ; 그리퍼 닫기 3초 진행 중
+MAP G_OPENING M00418 ; 그리퍼 열기 3초 진행 중
+MAP PLC_ERR M00419 ; 마지막 명령 거부
+MAP PLAY M0041A ; P46 재개 펄스 진행 중
+MAP IDLE M00420 ; 명령 판정용 로봇 정지
+MAP G_BUSY M00421 ; 그리퍼 타이머 입력
+MAP END1 M00422 ; 스크립트1 끝
+MAP END2 M00423 ; 스크립트2 끝
+MAP S_MOV M00424 ; 상태 코드용 로봇 동작 중
+MAP S_ABN M00425 ; 상태 코드용 로봇 비정상 정지
+MAP OK1111 M00430 ; 1111 접수
+MAP OK9991 M00431 ; 9991 접수
+MAP OK9992 M00432 ; 9992 접수
+MAP OK9995 M00433 ; 9995 접수
+MAP OK9993 M00434 ; 9993 접수
+MAP OK9994 M00435 ; 9994 접수
+MAP OK3333 M00436 ; 3333 접수
+MAP OK2222 M00437 ; 2222 접수
+MAP ACC M00438 ; 이번 스캔 접수
+MAP REJ M00439 ; 이번 스캔 거부
+MAP TGRIP T0300 ; 그리퍼 3초 (100ms x 30)
+MAP TPLAY T0301 ; P46 펄스 0.5초 (100ms x 5)
+
+# ① 첫 스캔
+BRST M00410 16, SET G_OPENING, MOV 0 D01001 := F0009B ; PICKNPLACE_FULL (PC가 순서를 정하는 픽앤플레이스). 첫 스캔: 래치 M00410~M0041F(자동 운전, 즉시 정지, 요청, 그리퍼, PLC 이상) 지움, 그리퍼 열기 3초 시작, 우편함 D01001 = 0
+
+# ② 로봇 핸드셰이크와 자동 그리퍼 시작
+SET RUN1, RST REQ1 := REQ1 & DO0 ; 이동1 요청 중 로봇 DO0(동작 중) ON → RUN1(스크립트1 시작함), DI0 요청 끔
+SET RUN2, RST REQ2 := REQ2 & DO0 ; 이동2 요청 중 로봇 DO0(동작 중) ON → RUN2(스크립트2 시작함), DI1 요청 끔
+OUT END1 := RUN1 & !DO0 & !DO1 & !ESTOP ; 스크립트1 끝: 시작한 뒤 DO0·DO1 OFF. 즉시 정지 중에는 끝으로 보지 않음
+OUT END2 := RUN2 & !DO0 & !DO1 & !ESTOP ; 스크립트2 끝: 시작한 뒤 DO0·DO1 OFF. 즉시 정지 중에는 끝으로 보지 않음
+RST RUN1 := END1 ; 스크립트1 끝 → RUN1 끔
+RST RUN2 := END2 ; 스크립트2 끝 → RUN2 끔
+SET G_CLOSING := END1 & AUTO ; 자동 운전 중 스크립트1 끝 → 그리퍼 닫기 시작
+SET G_OPENING := END2 & AUTO ; 자동 운전 중 스크립트2 끝 → 그리퍼 열기 시작
+
+# ③ 그리퍼 타이머
+OUT G_BUSY := G_CLOSING | G_OPENING ; 그리퍼 닫기·열기 진행 중 → 타이머 입력
+TON TGRIP 30 := G_BUSY & !TGRIP ; 그리퍼 3초 (100ms x 30). 끝난 다음 스캔에 0으로 돌아가 다음 3초가 이어 붙지 않음
+SET G_CLOSED, RST G_CLOSING := TGRIP & G_CLOSING ; 닫기 3초 끝 → 그리퍼 닫힘
+RST G_CLOSED, RST G_OPENING, RST AUTO := TGRIP & G_OPENING ; 열기 3초 끝 → 그리퍼 열림, 자동 운전 끝
+
+# ④ 명령 판정 (②·③이 바꾼 최신 래치로 판정)
+OUT IDLE := !REQ1 & !REQ2 & !DO0 & !DO1 & !ESTOP ; 명령 판정용 로봇 정지: 요청 없음, DO0·DO1 OFF, 즉시 정지 아님
+OUT C0 := [= D01001 0] ; 우편함 D01001 = 0 (명령 없음)
+OUT C1111 := [= D01001 1111] ; 명령 1111 자동 운전 시작
+OUT C9991 := [= D01001 9991] ; 명령 9991 이동1
+OUT C9992 := [= D01001 9992] ; 명령 9992 이동2
+OUT C9995 := [= D01001 9995] ; 명령 9995 즉시 정지
+OUT C9993 := [= D01001 9993] ; 명령 9993 재개
+OUT C9994 := [= D01001 9994] ; 명령 9994 자동 운전 해제
+OUT C3333 := [= D01001 3333] ; 명령 3333 그리퍼 전환
+OUT C2222 := [= D01001 2222] ; 명령 2222 상태 확인
+OUT OK1111 := C1111 & IDLE & !G_CLOSED & !G_CLOSING & !G_OPENING & !AUTO ; 1111 접수: 로봇 정지, 그리퍼 열림, 그리퍼 동작 중 아님, 자동 운전 아님
+OUT OK9991 := C9991 & IDLE & !G_CLOSING & !G_OPENING ; 9991 접수: 로봇 정지, 그리퍼 동작 중 아님
+OUT OK9992 := C9992 & IDLE & !G_CLOSING & !G_OPENING ; 9992 접수: 로봇 정지, 그리퍼 동작 중 아님
+OUT OK9995 := C9995 ; 9995 접수: 언제나
+OUT OK9993 := C9993 & ESTOP ; 9993 접수: 즉시 정지 중
+OUT OK9994 := C9994 & IDLE & !G_CLOSING & !G_OPENING ; 9994 접수: 로봇 정지, 그리퍼 동작 중 아님
+OUT OK3333 := C3333 & IDLE & !G_CLOSING & !G_OPENING ; 3333 접수: 로봇 정지, 그리퍼 동작 중 아님
+OUT OK2222 := C2222 ; 2222 접수: 언제나
+OUT ACC := OK1111 | OK9991 | OK9992 | OK9995 | OK9993 | OK9994 | OK3333 | OK2222 ; 이번 스캔 접수
+OUT REJ := !C0 & !ACC ; 이번 스캔 거부: 우편함이 0이 아닌데 접수하지 않음 (모르는 코드 포함)
+
+# ⑤ 명령 효과
+SET AUTO := OK1111 ; 자동 운전 시작
+SET REQ1 := OK9991 ; 이동1 요청
+SET REQ2 := OK9992 ; 이동2 요청
+SET ESTOP, RST REQ1, RST REQ2 := OK9995 ; 즉시 정지. 로봇이 아직 받지 않은 요청도 취소
+RST ESTOP, SET PLAY := OK9993 ; 재개: 즉시 정지 해제, P46 재개 펄스 시작
+RST AUTO := OK9994 ; 자동 운전 해제
+SET G_CLOSING := OK3333 & !G_CLOSED ; 그리퍼 전환: 열림이면 닫기 시작
+SET G_OPENING := OK3333 & G_CLOSED ; 그리퍼 전환: 닫힘이면 열기 시작
+MOV 0 D01001, RST PLC_ERR := ACC ; 접수: 우편함 지움, PLC 정상
+MOV 0 D01001, SET PLC_ERR := REJ ; 거부: 우편함 지움, PLC 이상
+
+# ⑥ 재개 펄스와 출력
+TON TPLAY 5 := PLAY ; P46 재개 펄스 0.5초 (100ms x 5)
+RST PLAY := TPLAY ; 0.5초 끝 → 재개 펄스 끝
+OUT DI0 := REQ1 ; 로봇 DI0 이동1 요청
+OUT DI1 := REQ2 ; 로봇 DI1 이동2 요청
+OUT DI2 := PLAY ; 로봇 DI2 재개 펄스
+OUT DI3 := ESTOP ; 로봇 DI3 즉시 정지
+OUT G_CLOSE := G_CLOSING & !G_OPEN ; 그리퍼 닫기 출력 (열기와 인터록)
+OUT G_OPEN := G_OPENING & !G_CLOSE ; 그리퍼 열기 출력 (닫기와 인터록)
+
+# ⑦ 상태 코드 D01000 = 1 + 로봇 + 3 × 그리퍼 + 6 × PLC (맨 아래. 이 스캔의 모든 변화를 반영)
+OUT S_ABN := DO1 | ESTOP ; 상태 코드용 로봇 비정상 정지: DO1 ON 또는 즉시 정지 중
+OUT S_MOV := REQ1 | REQ2 | DO0 ; 상태 코드용 로봇 동작 중: 요청 중이거나 DO0 ON
+MOV 1 D01000 := !PLC_ERR & !G_CLOSED & S_MOV & !S_ABN ; 상태 0001: 정상·열림·동작 중
+MOV 2 D01000 := !PLC_ERR & !G_CLOSED & !S_MOV & !S_ABN ; 상태 0002: 정상·열림·정지
+MOV 3 D01000 := !PLC_ERR & !G_CLOSED & S_ABN ; 상태 0003: 정상·열림·비정상 정지
+MOV 4 D01000 := !PLC_ERR & G_CLOSED & S_MOV & !S_ABN ; 상태 0004: 정상·닫힘·동작 중
+MOV 5 D01000 := !PLC_ERR & G_CLOSED & !S_MOV & !S_ABN ; 상태 0005: 정상·닫힘·정지
+MOV 6 D01000 := !PLC_ERR & G_CLOSED & S_ABN ; 상태 0006: 정상·닫힘·비정상 정지
+MOV 7 D01000 := PLC_ERR & !G_CLOSED & S_MOV & !S_ABN ; 상태 0007: 이상·열림·동작 중
+MOV 8 D01000 := PLC_ERR & !G_CLOSED & !S_MOV & !S_ABN ; 상태 0008: 이상·열림·정지
+MOV 9 D01000 := PLC_ERR & !G_CLOSED & S_ABN ; 상태 0009: 이상·열림·비정상 정지
+MOV 10 D01000 := PLC_ERR & G_CLOSED & S_MOV & !S_ABN ; 상태 0010: 이상·닫힘·동작 중
+MOV 11 D01000 := PLC_ERR & G_CLOSED & !S_MOV & !S_ABN ; 상태 0011: 이상·닫힘·정지
+MOV 12 D01000 := PLC_ERR & G_CLOSED & S_ABN ; 상태 0012: 이상·닫힘·비정상 정지

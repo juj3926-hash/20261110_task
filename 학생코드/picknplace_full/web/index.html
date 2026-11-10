@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PICKNPLACE_FULL</title>
+<style>
+:root{color-scheme:light dark;
+ --bg:light-dark(#F5F5F3,#111315);--surface:light-dark(#FFFFFF,#181B1F);--ink:light-dark(#181A1D,#F1F2F3);
+ --body:light-dark(#35393E,#D3D6DA);--muted:light-dark(#646B73,#969DA6);--line:light-dark(#D9DDE1,#343A42);
+ --rule:light-dark(#888F97,#737C85);--accent:light-dark(#1B3A5C,#8CA9C4);--accent-ink:light-dark(#FFFFFF,#101C28);
+ --focus:light-dark(#2E6F9F,#A8C7E0);--bad:light-dark(#A33A3A,#E18484);--bad-ink:light-dark(#FFFFFF,#2A1214)}
+*{box-sizing:border-box}
+body{margin:0;padding:24px;background:var(--bg);color:var(--body);font-family:"Pretendard", "Malgun Gothic",sans-serif;font-size:16px;line-height:24px}
+main{max-width:1040px;margin:auto;display:grid;gap:24px}
+h1{margin:0;font-size:24px;line-height:32px;color:var(--ink)}
+h2{margin:0 0 8px;font-size:16px;font-weight:700;color:var(--ink)}
+p{margin:0}
+section{border-top:1px solid var(--rule);padding-top:12px;display:grid;gap:8px}
+small,.muted{color:var(--muted);font-size:14px;line-height:20px}
+#state{font-size:32px;line-height:40px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+#comm{color:var(--bad);font-weight:700}
+.row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.row>span{display:grid;gap:4px;max-width:220px}
+button,input{font:inherit;padding:8px 16px;border:1px solid var(--rule);border-radius:4px}
+button{background:var(--accent);color:var(--accent-ink);cursor:pointer}
+button:disabled{opacity:.45;cursor:default}
+#estop{background:var(--bad);color:var(--bad-ink);font-weight:700}
+input{width:120px;background:var(--surface);color:var(--ink)}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+pre{margin:0;font:inherit;font-size:14px;line-height:20px;font-variant-numeric:tabular-nums;white-space:pre-wrap;overflow-wrap:anywhere;
+ background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:12px}
+#log{max-height:480px;overflow:auto}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+<header>
+<h1>PICKNPLACE_FULL</h1>
+<p class="muted" id="target">서버에 묻는 중</p>
+</header>
+
+<section aria-label="상태">
+<p id="state">----</p>
+<p class="muted" id="detail"></p>
+<p id="comm" role="alert"></p>
+</section>
+
+<section aria-label="버튼">
+<div class="row">
+<span><button data-button="start" disabled>시작</button><small></small></span>
+<span><button data-button="stop" disabled>정지</button><small></small></span>
+<span><button data-button="estop" id="estop">즉시 정지</button><small></small></span>
+<span><button data-button="resume" disabled>재개</button><small></small></span>
+<span><button data-button="script1" disabled>스크립트1</button><small></small></span>
+<span><button data-button="script2" disabled>스크립트2</button><small></small></span>
+<span><button data-button="gripper" disabled>그리퍼</button><small></small></span>
+</div>
+<form class="row" id="code-form">
+<span><label for="code">직접 코드 (1~65535)</label><input id="code" type="number" min="1" max="65535" step="1"></span>
+<span><button id="code-send" disabled>보내기</button><small id="code-hint"></small></span>
+</form>
+<p id="message" role="status" aria-live="polite"></p>
+</section>
+
+<section aria-label="자동 순서">
+<h2>자동 순서</h2>
+<p id="step"></p>
+<p class="muted" id="sequence"></p>
+</section>
+
+<section aria-label="포트 찾기" id="ports-section" hidden>
+<h2>포트 찾기</h2>
+<pre id="ports"></pre>
+<p><button id="rescan">다시 찾기</button> <small>직접 고르려면 --target serial:COMn으로 다시 실행합니다</small></p>
+</section>
+
+<section aria-label="로그">
+<h2>로그 <small>최신이 위</small></h2>
+<pre id="log"></pre>
+</section>
+</main>
+<script src="/ui.js"></script>
+</body>
+</html>

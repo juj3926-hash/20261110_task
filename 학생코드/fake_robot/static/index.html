@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>가짜 로봇 3D</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg: #f2f4f7; --panel: #ffffff; --ink: #101828; --muted: #667085; --line: #d0d5dd;
+          --on: #12b76a; --stop: #f04438; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; font-family: "Malgun Gothic", sans-serif; color: var(--ink); background: var(--bg);
+         display: grid; grid-template-columns: minmax(0, 1fr) 390px; }
+  #view { position: relative; min-height: 360px; }
+  #view canvas { position: absolute; inset: 0; }
+  .overlay { position: absolute; left: 12px; background: rgba(255, 255, 255, .88); border-radius: 6px;
+             padding: 6px 10px; font-size: 13px; line-height: 1.5; }
+  #note { top: 10px; }
+  #joints { bottom: 10px; font-family: Consolas, "Malgun Gothic", monospace; }
+  aside { background: var(--panel); border-left: 1px solid var(--line); padding: 14px 16px; overflow-y: auto;
+          display: flex; flex-direction: column; gap: 14px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  h2 { font-size: 13px; color: var(--muted); margin: 0 0 6px; font-weight: normal; }
+  #plc.on { color: #027a48; }
+  #plc.off { color: var(--stop); }
+  #state { font-size: 26px; font-weight: bold; }
+  .lamps { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; font-size: 13px; }
+  .lamp { display: flex; align-items: center; gap: 6px; }
+  .lamp i { width: 14px; height: 14px; border-radius: 50%; background: #e4e7ec; border: 1px solid #98a2b3; flex: none; }
+  .lamp.on i { background: var(--on); border-color: #039855; }
+  .lamp.alarm.on i { background: var(--stop); border-color: #b42318; }
+  label { display: block; font-size: 14px; margin: 2px 0; }
+  .small { font-size: 12px; color: var(--muted); margin: 6px 0 0; line-height: 1.5; }
+  button { font-family: inherit; font-size: 13px; padding: 4px 10px; }
+  .row { display: flex; align-items: center; gap: 4px; margin: 4px 0; font-size: 13px; }
+  .row b { width: 42px; font-weight: normal; }
+  .row input[type=number] { width: 46px; font-family: inherit; font-size: 12px; padding: 2px; }
+  #log { font-family: Consolas, "Malgun Gothic", monospace; font-size: 12px; height: 280px; overflow-y: auto;
+         border: 1px solid var(--line); padding: 6px; white-space: pre-wrap; }
+  .k-경고 { color: #b54708; }
+  .k-오류 { color: #d92d20; font-weight: bold; }
+  .k-DO { color: #175cd3; }
+</style>
+<script type="importmap">{"imports": {"three": "/vendor/three.module.min.js"}}</script>
+<script type="module" src="/app.js"></script>
+</head>
+<body>
+<main id="view">
+  <div id="note" class="overlay">HCR-3A 비슷한 6축 팔 · 치수는 근사 (어깨 높이 0.22 m, 위팔 0.27 m, 아래팔 0.23 m)<br>
+    마우스: 왼쪽 끌기 = 돌리기, 휠 = 확대</div>
+  <div id="joints" class="overlay"></div>
+</main>
+<aside>
+  <section>
+    <h1>가짜 로봇 (HCR-3A 흉내)</h1>
+    <div id="plc" class="off">PLC 연결 없음</div>
+  </section>
+  <section>
+    <h2>상태</h2>
+    <div id="state">쉼</div>
+  </section>
+  <section>
+    <h2>표시등</h2>
+    <div class="lamps">
+      <span class="lamp" id="DI0"><i></i>DI0 이동1 요청</span>
+      <span class="lamp" id="DO0"><i></i>DO0 동작 중</span>
+      <span class="lamp" id="DI1"><i></i>DI1 이동2 요청</span>
+      <span class="lamp alarm" id="DO1"><i></i>DO1 비정상 정지</span>
+      <span class="lamp" id="DI2"><i></i>DI2 예약 (로봇은 안 봄)</span>
+      <span></span>
+      <span class="lamp alarm" id="DI3"><i></i>DI3 즉시 정지</span>
+    </div>
+  </section>
+  <section>
+    <h2>실행</h2>
+    <label><input type="radio" name="mode" value="builtin" checked> 내장 스크립트 (DI0 → PICK, DI1 → HOME)</label>
+    <label><input type="radio" name="mode" value="script"> 학생 스크립트 (Rodi Script 파일)</label>
+    <div class="row">
+      <input type="file" id="file" accept=".js" aria-label="스크립트 파일 열기">
+    </div>
+    <div class="row">
+      <button id="rerun" disabled>다시 실행 (읽어 둔 내용)</button>
+      <button id="stop" disabled>멈춤</button>
+      <span id="script-name" class="small"></span>
+    </div>
+    <p class="small">스크립트를 고쳤으면 파일을 다시 고른다. [다시 실행]은 열 때 읽은 내용을 그대로 돌린다.<br>
+      ES5만 실행됨: var·function·while을 쓴다. let·const·화살표 함수는 실행되지 않는다.<br>
+      스레드의 moveStop은 실물 미확인. 스레드가 메인의 전역 변수를 보는지도 실물 미확인.</p>
+  </section>
+  <section>
+    <h2>HOME·PICK 관절 (내장 스크립트, deg)</h2>
+    <div class="row" id="home"><b>HOME</b></div>
+    <div class="row" id="pick"><b>PICK</b></div>
+    <button id="apply">적용 (다음 이동부터)</button>
+  </section>
+  <section>
+    <h2>실행 로그 (최신이 위)</h2>
+    <div id="log" role="log"></div>
+  </section>
+</aside>
+</body>
+</html>
