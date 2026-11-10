@@ -78,7 +78,32 @@ class Sequencer:
 
     async def _cycle(self) -> str:
         """과제 B: 정상 순서를 연결한 뒤 두 정지 경계를 추가한다."""
-        raise NotImplementedError("과제 B: 순서·완료 대기·정지 경계를 구현하라")
+        # 1단계: 자동 운전 시작. START는 _accept 안에서 선행 정지 대기를 생략한다.
+        self._set_step("1단계 자동 운전 시작")
+        await self._accept(START)
+        if self.stop_requested:  # 정지 경계 1: 시작 접수 뒤, 로봇을 움직이기 전
+            return await self._stop()
+
+        # 2단계: 이동1 요청 → 로봇 정지(robot == 1)로 이동 완료 확인
+        self._set_step("2단계 이동1")
+        await self._accept(MOVE1)
+        await self._until(lambda s: s.robot == 1, self.move_timeout)
+
+        # 3단계: 그리퍼 닫힘은 PLC가 자동으로 수행하므로 3333을 보내지 않고 관측만 한다
+        self._set_step("3단계 그리퍼 닫힘 기다림")
+        await self._until(lambda s: s.gripper == 1, self.grip_timeout)
+        if self.stop_requested:  # 정지 경계 2: 물건을 잡은 뒤, 이동2 전
+            return await self._stop()
+
+        # 4단계: 이동2 요청 → 이동 완료 확인. 이동2를 보낸 뒤에는 사이클을 끝까지 마친다
+        self._set_step("4단계 이동2")
+        await self._accept(MOVE2)
+        await self._until(lambda s: s.robot == 1, self.move_timeout)
+
+        # 5단계: PLC가 자동으로 여는 그리퍼의 열림 확인
+        self._set_step("5단계 그리퍼 열림 기다림")
+        await self._until(lambda s: s.gripper == 0, self.grip_timeout)
+        return "완료"
 
     async def _stop(self) -> str:
         """단계 경계에서 정지 요청을 처리한다. 9994가 접수되면 "정지"다."""
@@ -92,13 +117,19 @@ class Sequencer:
 
     async def _accept(self, code: int) -> None:
         """과제 A: START 외에는 정지를 기다린 뒤 한 번 보내고 결과를 판단한다."""
-        raise NotImplementedError("과제 A: START 외 정지 대기, 한 번 전송, 접수·거부·미확인 판정을 구현하라")
+        if code != START:
+            # 로봇이 정지(robot == 1)한 새 관측을 본 뒤에만 보낸다. 실패 시 _until이 Abort를 올려 전송하지 않는다
+            await self._until(lambda s: s.robot == 1, self.move_timeout)
+        r = await self._send(code)  # 재시도 없이 정확히 한 번
+        if r.result != "접수":  # 거부·미확인은 진행 불가. 단계와 판정을 남기고 중단
+            raise Abort("%s: %s" % (self.step, _result_text(r)))
 
     async def _until(self, pred: Callable[[Status], bool], timeout: float) -> None:
         """과제 C: 새 관측이 오지 않아 제한 시간을 넘긴 경우를 처리한다."""
         observed = await self.link.wait(pred, timeout)
         if observed is None:
-            raise NotImplementedError("과제 C: 시간 초과를 Abort로 중단하라")
+            # 새 관측 없이 한도를 넘김. 오래된 link.status로 완료 처리하지 않고 후속 명령을 막는다
+            raise Abort("%s: 시간 초과 (%g초 동안 조건을 만족한 새 관측 없음)" % (self.step, timeout))
 
     async def close(self) -> None:
         """프로그램을 끝낼 때 부른다. 돌고 있는 자동 순서를 멈추고 한 줄을 남긴다.
@@ -162,9 +193,10 @@ class Sequencer:
         if not s.valid:
             return s.text()  # 예: "알 수 없는 코드 0". PLC STOP이거나 다른 래더다
         # 위의 통신·상태 검사가 먼저다. raw 0이면 s.robot이 None이라 아래 ROBOT_TEXT[s.robot]이 고장 난다
-        # TODO D: auto_maybe_on이면 개별 이동1·이동2·그리퍼를 보류하라.
-        # 통신·유효 상태 검사는 유지하며, 해제·즉시 정지·재개 경로를 막지 않는다.
+        # D: 자동 운전 여부가 미확정(auto_maybe_on)이면 개별 세 버튼만 보류한다.
+        # 통신·유효 상태 검사는 위에서 유지되고, 해제(stop)·즉시 정지·재개는 막지 않는다.
         in_cycle = (self.running, "자동 순서 중")
+        auto_unknown = (self.auto_maybe_on, "자동 운전 여부 미확정: 자동 운전 해제(9994)를 먼저 하세요")
         robot_busy = (s.robot != 1, "로봇 " + ROBOT_TEXT[s.robot])  # 1 = 정지
         grip_busy = (self.grip_pending, "그리퍼 동작 중")
         off_when = {  # 버튼마다 (꺼지는 조건, 이유). 앞에서부터 본다
@@ -172,9 +204,9 @@ class Sequencer:
                       robot_busy, grip_busy, (s.gripper == 1, "그리퍼를 먼저 여세요")],
             "stop": [(not self.auto_maybe_on, "자동 순서 중 아님")],  # 여기서 정지는 9994를 보낸다
             "resume": [(s.robot != 2, "즉시 정지 중 아님")],
-            "script1": [in_cycle, robot_busy, grip_busy],
-            "script2": [in_cycle, robot_busy, grip_busy],
-            "gripper": [in_cycle, robot_busy, grip_busy],
+            "script1": [in_cycle, auto_unknown, robot_busy, grip_busy],
+            "script2": [in_cycle, auto_unknown, robot_busy, grip_busy],
+            "gripper": [in_cycle, auto_unknown, robot_busy, grip_busy],
             "code": [in_cycle],
         }
         for off, why in off_when[name]:
